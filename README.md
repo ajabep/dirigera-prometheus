@@ -1,0 +1,54 @@
+# Prometheus Gateway for the IKEA Dirigera Gateway
+
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ajabep/dirigera-prometheus/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ajabep/dirigera-prometheus)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=ajabeporg_dirigera-prometheus&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=ajabeporg_dirigera-prometheus)
+
+
+## How to install?
+
+## How to build?
+
+Build the docker container `./Dockerfile` to build all the system. Refers to the installation part to know how to use it.
+
+
+## Installation
+
+To install this software, you have to use the container. To install the container, here are the instructions:
+
+1. Pull the docker image [`ghcr.io/ajabep/dirigera-prometheus:main`](https://ghcr.io/ajabep/dirigera-prometheus:main);
+2. Issue an authentication token to the Dirigera hub by:
+   1. Execute `docker run --rm -it ghcr.io/ajabep/dirigera-prometheus:main generateToken`;
+   2. Follow instructions (pressing the button of the hub and press enter);
+3. The container has to be linked to the Dirigera hub;
+4. The environment variables are to are the following.
+	- `REMOTE`: (string; an IP or a domain name) The address of the Dirigera hub;
+	- `HOST`: (string; an IP or a domain name) The hostname that requests are supposed to use. Add the port number
+	  is not standard;
+	- `DIRIGERA_TOKEN`: (string; a JWT token) The token issued previously, at step 2;
+	- `WEBPATH`: (Optional; string; a path) The path to use to access this service (in case it's behind a reverse proxy). This may
+      be used to avoid exposing the prometheus at a predictable endpoint, but is not a strong authentication;
+    - `VERBOSE`: (Optional; positive integer) When used, the logs will be verbose;
+    - `DO_NOT_VERIFY_REVERSE_PROXY`: (Optional; string) When the string is `The reverse proxy set X-Forwarded-For and
+	  X-Forwarded-Host headers`, the launch script will not verify if the reverse proxy putted in front of this app is
+	  well configured. This is useful when your docker container is not able to reach your reverse proxy, if your
+	  website has no HTTPS or even for development purpose.
+	- `UNSAFE_DEVELOPMENT_MODE`: (Optional; string) **UNSAFE** to use only when you are developing. If the value is not
+	  the right one (embedded in the entrypoint file ; case-sensitive), the dev mode will not be enabled. Please, make
+	  sure this is used only in a development network and computer. This will only make this container more weak and
+	  vulnerable. If you want to have some verbose log, use the `VERBOSE` variable. This option is **UNSAFE**. Do
+      **NOT** use it.
+5. You HAVE to put this server BEHIND a reverse-proxy. For more info, refer to the
+   [Flask documentation](https://flask.palletsprojects.com/en/2.3.x/deploying/). Your reverse proxy **HAVE** to set the
+   headers `X-Forwarded-For`, `X-Forwarded-Host`. If you don't want to use them, please, clear them.
+
+The application files are putted in the `/app` directory.
+
+Logs are available on the STDOUT.
+
+## TODO
+
+Check issues and fix some of them!
+
+## License
+
+*smbpasswd-web-light* is released under the Unlicensed license. See the [./LICENSE](LICENSE) file.
