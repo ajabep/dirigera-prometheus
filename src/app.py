@@ -31,7 +31,6 @@ import dirigera.devices.outlet
 import dirigera.devices.scene
 import dirigera.devices.water_sensor
 import dirigera.hub.hub
-import pydantic
 import requests
 from flask import Flask, Blueprint, request, Response, abort
 from prometheus_client import make_wsgi_app, Counter, Gauge, Info, Histogram, CollectorRegistry
@@ -164,8 +163,8 @@ class DeviceMetric:
     def __hash__(self) -> int:
         return hash(self.dev.id)
 
-    @cache
-    def get_own_attributes(self) -> dict[str, pydantic.fields.FieldInfo]:
+    @cache  # pylint: disable=method-cache-max-size-none
+    def get_own_attributes(self) -> dict[str, object]:
         my_fields = self.dev.attributes.model_fields
         attrs = set(my_fields.keys())
         default_attrs = set(dirigera.devices.device.Attributes.model_fields.keys())
@@ -325,10 +324,10 @@ class DeviceRegistry:
     def update(self):
         try:
             devs = self.hub.get_all_devices()
-        except requests.exceptions.HTTPError:
-            raise Exception("The Authentication Token is no longer valid")
-        except requests.exceptions.ConnectTimeout:
-            raise Exception("The Dirigera hub is not reachable")
+        except requests.exceptions.HTTPError as exc:
+            raise Exception("The Authentication Token is no longer valid") from exc
+        except requests.exceptions.ConnectTimeout as exc:
+            raise Exception("The Dirigera hub is not reachable") from exc
 
         new_dev_id = set()
         old_dev_id = list(self.devices.keys())

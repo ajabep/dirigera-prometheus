@@ -1,7 +1,7 @@
 # Prometheus Gateway for the IKEA Dirigera Gateway
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ajabep/dirigera-prometheus/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ajabep/dirigera-prometheus)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=ajabeporg_dirigera-prometheus&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=ajabeporg_dirigera-prometheus)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=ajabep_dirigera-prometheus&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=ajabep_dirigera-prometheus)
 
 
 ## ⚠️ Known Issues

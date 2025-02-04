@@ -13,6 +13,9 @@ dirigera = "^1.2.1"
 prometheus-client = "^0.21.1"
 gunicorn = "^23.0.0"
 
+[tool.pylint.main]
+disable = ["line-too-long", "missing-function-docstring", "missing-class-docstring", "missing-module-docstring", "broad-exception-raised"]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
