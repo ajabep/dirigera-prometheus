@@ -4,12 +4,45 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=ajabeporg_dirigera-prometheus&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=ajabeporg_dirigera-prometheus)
 
 
-## How to install?
+## ⚠️ Known Issues
+
+Before using this project, please, acknowledge the following **MAJOR** issues. I left this project in this shaky state because it was fine enough for my needs.
+
+Of course, you're welcome to provide merge request to fix them!
+
+### ⚠️ Very ugly code base and slow HTTP server! ⚠️
+
+I know that the code base is ugly and the HTTP server sooooooo slow.
+
+I faced the following issue:
+
+When I subscribe updates from the Dirigera Gateway, Python stays at this step without opening (at that step) the HTTP.
+
+Thus, I tried multi-threading, but the Prometheus sharing between processes and thread is really poor and was not retrieving all the data.
+
+I began to rewrote everything in async, hoping it will solve all the problems: if I correctly understood the documentation, the event loop will schedule the different task in "parallel" in the same thread. Thus, we can run the update handling and the HTTP request handling in the same thread, resolving all the previous issue. TBH, for this part, any idea and/or design (or even confirm that it could work) is more than welcome! I have absolutely zero knowledge about the asyncio part of Python.
+
+But, unfortunately, I faced a lack of time. So, I just adapted a bit the code to make it working, even if it's soooooo slow.
+
+### Not everything is implemented
+
+Due to the dirigera Python dependency, not everything is implemented. I hope to be able to fix that later, but, it's 
+not really my current priority.
+
+### Only tested with my setup
+
+This has only been tested with my setup. I do not own every IKEA devices (a lot, but definitely not all), so, some of them may miss some metrics or may do this code bugging.
+
+Please, if you find a bug, report it! Thus, everyone may be able to have a fix... including you!
+
+### Metrics are not really OpenTelemetry compliant
+
+Yes. I know, I do not use here the label and all of these things. I know. Once again, it's "good enough" for me, and 
+I miss time.
 
 ## How to build?
 
 Build the docker container `./Dockerfile` to build all the system. Refers to the installation part to know how to use it.
-
 
 ## Installation
 
@@ -49,6 +82,8 @@ Logs are available on the STDOUT.
 
 Check issues and fix some of them!
 
+Or check the "Known Issues" section of this file.
+
 ## License
 
-*smbpasswd-web-light* is released under the Unlicensed license. See the [./LICENSE](LICENSE) file.
+*dirigera-prometheus-gateway* is released under the Unlicensed license. See the [./LICENSE](LICENSE) file.

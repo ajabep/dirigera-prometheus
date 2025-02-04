@@ -6,11 +6,8 @@ import argparse
 import dataclasses
 import datetime
 import enum
-import json
 import logging
-import os
 import pathlib
-import pprint
 import secrets
 import string
 import sys
@@ -18,7 +15,6 @@ import textwrap
 import threading
 import typing
 from functools import cache
-from threading import Thread
 from typing import Callable
 
 import dirigera
@@ -38,22 +34,17 @@ import dirigera.hub.hub
 import pydantic
 import requests
 from flask import Flask, Blueprint, request, Response, abort
-from prometheus_client import make_wsgi_app, Counter, Gauge, Info, Histogram, Enum, Summary, \
-    multiprocess, CollectorRegistry, REGISTRY
-from prometheus_client.metrics import MetricWrapperBase
+from prometheus_client import make_wsgi_app, Counter, Gauge, Info, Histogram, CollectorRegistry
+from prometheus_client.metrics import MetricWrapperBase, Enum, Summary
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.middleware.proxy_fix import ProxyFix
+
 
 APP_DIR = pathlib.Path(__file__).absolute().parent
 DEFAULT_ADDRESS = '0.0.0.0'  # nosec: disable=104
 DEFAULT_PORT = 8080
 DEFAULT_PROTO = 'http'
 CONFIG = {}
-
-MYREGISTRY = CollectorRegistry()
-
-i = Info("dirigera_prometheus_gateway", __doc__.replace('\n', '').strip())
-metric_export = Histogram('metric_export_seconds', 'Histogram of the metrics generation')
 
 bp = Blueprint('app', __name__)
 
@@ -136,6 +127,10 @@ def get_hub() -> dirigera.Hub:
         ip_address=CONFIG['REMOTE_ADDR']
     )
 
+def test_hub_params() -> None:
+    hub = get_hub()
+    hub.get_scenes()
+
 def snakecase(s: str) -> str:
     return ''.join([
         c if c in string.ascii_lowercase + string.digits else '_' + c.lower() if c in string.ascii_uppercase else '_'
@@ -160,7 +155,7 @@ def any_to_type(value: typing.Any, dest_type: type[T]) -> T:
 @dataclasses.dataclass
 class DeviceMetric:
     attributes: Info = dataclasses.field(init=False)
-    values: typing.Dict[str, MetricWrapperBase] = dataclasses.field(default_factory=dict, init=False)
+    values: dict[str, MetricWrapperBase] = dataclasses.field(default_factory=dict, init=False)
     dev: dirigera.devices.device.Device
 
     def __eq__(self, other) -> bool:
@@ -170,7 +165,7 @@ class DeviceMetric:
         return hash(self.dev.id)
 
     @cache
-    def get_own_attributes(self) -> typing.Dict[str, pydantic.fields.FieldInfo]:
+    def get_own_attributes(self) -> dict[str, pydantic.fields.FieldInfo]:
         my_fields = self.dev.attributes.model_fields
         attrs = set(my_fields.keys())
         default_attrs = set(dirigera.devices.device.Attributes.model_fields.keys())
@@ -179,14 +174,18 @@ class DeviceMetric:
             for k in attrs - default_attrs
         }
 
-    def __init__(self, dev: dirigera.devices.device.Device):
+    def __init__(self, dev: dirigera.devices.device.Device, registry: CollectorRegistry):
         logging.info('Init a DeviceMetric with %r', dev)
         self.dev = dev
         logging.debug('name=%s', self.name)
         dev_id = dev.id
         dev_type = dev.device_type
-        self.attributes = Info(self.name + '_attributes', f'Accessory named "{self.name}", id "{dev_id}"')
+        self.registry = registry
+        self.attributes = Info(self.name + '_attributes',
+                               f'Accessory named "{self.name}", id "{dev_id}"',
+                               registry=self.registry)
         self.values = {}
+
         for attr_name, field_info in self.get_own_attributes().items():
             f_type = field_info.annotation
 
@@ -196,29 +195,32 @@ class DeviceMetric:
                 else:
                     f_type = f_type.__args__[0]
 
-            logging.debug(f_type)
-            logging.debug(type(f_type))
             if f_type in [int, float]:
-                self.values[attr_name] = Gauge(self.name + '_' + attr_name, f'Values related to the {dev_type} accessory {self.name} ({dev_id})')
+                self.values[attr_name] = Gauge(self.name + '_' + attr_name, f'Values related to the {dev_type} accessory {self.name} ({dev_id})', registry=self.registry)
             elif issubclass(f_type, enum.Enum):
                 self.values[attr_name] = Enum(self.name + '_' + attr_name, f'Values related to the {dev_type} accessory {self.name} ({dev_id})',
                                               states=[
                                                   str(e)
                                                   for e in f_type
-                                              ])
+                                              ],
+                                              registry=self.registry)
             elif f_type == bool:
                 self.values[attr_name] = Enum(self.name + '_' + attr_name, f'Values related to the {dev_type} accessory {self.name} ({dev_id})',
-                                              states=['False', 'True'])
+                                              states=['False', 'True'], registry=self.registry)
             elif f_type in [str, datetime.time, datetime.datetime]:
-                self.values[attr_name] = Info(self.name + '_' + attr_name, f'Values related to the {dev_type} accessory {self.name} ({dev_id})')
+                self.values[attr_name] = Info(self.name + '_' + attr_name, f'Values related to the {dev_type} accessory {self.name} ({dev_id})', registry=self.registry)
             else:
                 raise NotImplementedError(f'Cannot handle field type {f_type}')
 
         self.autofill()
 
     def __del__(self):
-        self.attributes.clear()
-        self.values.clear()
+        self.unregister()
+
+    def unregister(self):
+        self.registry.unregister(self.attributes)
+        for value in self.values.values():
+            self.registry.unregister(value)
 
     @property
     def name(self) -> str:
@@ -226,21 +228,21 @@ class DeviceMetric:
         prefix = ''
         if room is not None:
             prefix = snakecase(room.name) + '_'
-        return prefix + snakecase(self.dev.attributes.custom_name)
+        return prefix + snakecase(self.dev.attributes.custom_name) + '_' + snakecase(self.dev.device_type)
 
     @classmethod
     def to_str(cls, v: typing.Any) -> str:
         return str(v) if v is not None else ''
 
     @classmethod
-    def to_dict_str(cls, d: typing.Dict[str, typing.Any]) -> typing.Dict[str, str]:
+    def to_dict_str(cls, d: dict[str, typing.Any]) -> dict[str, str]:
         return {
             k: cls.to_str(v)
             for k, v in d.items()
         }
 
     def autofill(self) -> None:
-        self.attributes.info(self.to_dict_str({
+        parameters = {
             'id': self.dev.id,
             'type': self.dev.type,
             'device_type': self.dev.device_type,
@@ -262,12 +264,16 @@ class DeviceMetric:
             'ota_policy': self.dev.attributes.ota_policy,
             'ota_schedule_start':  self.dev.attributes.ota_schedule_start,
             'ota_schedule_end': self.dev.attributes.ota_schedule_end,
+        }
+        if self.dev.room is not None:
+            parameters.update({
+                'room_id': self.dev.room.id,
+                'room_name': self.dev.room.name,
+                'room_color': self.dev.room.color,
+                'room_icon': self.dev.room.icon,
+            })
 
-            'room_id': self.dev.room.id,
-            'room_name': self.dev.room.name,
-            'room_color': self.dev.room.color,
-            'room_icon': self.dev.room.icon,
-        }))
+        self.attributes.info(self.to_dict_str(parameters))
         for attr_name, _ in self.get_own_attributes().items():
             value_obj = self.values[attr_name]
             value_to_set = getattr(self.dev.attributes, attr_name)
@@ -286,144 +292,63 @@ class DeviceMetric:
                 if value_to_set is not None:
                     value_obj.state(str(value_to_set))
 
-    def update_obj(self, obj: dirigera.devices.base_ikea_model.BaseIkeaModel, data: typing.Dict[str, typing.Any]) -> None:
-        for k, v in data.items():
-            k = snakecase(k)
-            logging.debug('Updating key %r', k)
-            if not hasattr(obj, k):
-                logging.error('TODO? %s, %s', k, type(obj))
-                continue
-
-            attr = getattr(obj, k)
-            should_be_dict = isinstance(attr, dirigera.devices.base_ikea_model.BaseIkeaModel)
-            is_dict = isinstance(v, dict)
-            if should_be_dict ^ is_dict:
-                raise TypeError(f'Unexpected presence or absence of a dict: trying to access {k} of {type(obj)} with value {v:r}')
-
-            if should_be_dict:
-                logging.debug('Is a Dict!')
-                self.update_obj(attr, v)
-                logging.debug('End of the Dict')
-            else:
-                logging.debug('Updating to %r', type(attr))
-                setattr(obj, k, any_to_type(v, type(attr)))
-
-    def update_from_dict(self, data: typing.Dict[str, typing.Any]) -> None:
-        self.update_obj(self.dev, data)
+    def update(self, dev: dirigera.devices.device.Device):
+        if self.dev.id != dev.id:
+            raise AssertionError("Have to update metrics based on another device??")
+        self.dev = dev
         self.autofill()
 
-devices : typing.Dict[str, DeviceMetric] = {}
-devices_counter = Gauge('devices_counter', documentation='The total number of devices registered to the python script')
-devices_counter.set_function(lambda: len(devices))
-general_metrics = {
-    'updates': Counter('updates_total', documentation='The total number of updates since the last reboot of this system'),
-    'ws_failures': Counter('ws_failures_total', documentation='The total number of failures since the last reboot of this system'),
-    'devices ': devices_counter,
-}
+class DeviceRegistry:
+    devices : dict[str, DeviceMetric] = {}
+    def __init__(self):
+        self.registry = CollectorRegistry()
+        self.devices_counter = Gauge('devices_counter', documentation='The total number of devices registered to the python script', registry=self.registry)
+        self.devices_counter.set_function(lambda: len(self.devices))
 
-def dict_to_device_metric(dev_dict: typing.Dict[str, typing.Any]) -> DeviceMetric:
-    if 'type' not in dev_dict:
-        raise ValueError('Dict do not have a type key')
-    t = dev_dict['type']
-    fnc_name = f'dict_to_{snakecase(t)}'
-    if not hasattr(dirigera.hub.hub, fnc_name):
-        raise ValueError(f'dirigera.hub.hub do not have a function to create a {t} from a dict. Expected {fnc_name}')
-    fnc = getattr(dirigera.hub.hub, fnc_name)
-    dev = fnc(dev_dict)
-    return DeviceMetric(dev)
+        Info("dirigera_prometheus_gateway", __doc__.replace('\n', '').strip(), registry=self.registry)
+        self.metric_export = Histogram('metric_export_seconds', 'Histogram of the metrics generation', registry=self.registry)
 
+        self.hub = get_hub()
+        self.update()
 
-# noinspection PyUnusedLocal
-def populate_data_on_message(ws: typing.Any, message: str):
-    logging.debug("populate_data_on_message ; Thread ident = %r", threading.get_ident())
-    general_metrics['updates'].inc()
-    x = None
-    try:
-        x = json.loads(message)
-    except json.decoder.JSONDecodeError as e:
-        logging.exception('Incorrect JSON message: %s', message, exc_info=e)
-        return
-    logging.debug("x=%s", pprint.pformat(x))
+    def metric_factory(self) -> Callable:
+        prometheus_display_metric = make_wsgi_app(self.registry)
 
-    if x['source'] == 'urn:com:ikea:homesmart:iotc:timeservice':
-        # Raised when the location of the dirigera hub is changed. This location is used for the sunrise and sunshine hours.
-        return
-    if x['source'] == 'urn:com:ikea:homesmart:iotc:rulesengine':
-        # Raised when a device is linked or unlinked to another one, and when a scene is created or deleted.
-        return
-    if x['source'] == 'hub':
-        # Raised when a room is created, updated (?) and deleted
-        return
-    if x['source'] == 'urn:com:ikea:homesmart:iotc:tagmanager':
-        # Raised when ???????
-        return
-    # 'urn:com:ikea:homesmart:iotc:iotcd': Raised when a device is removed or ????
-    # 'urn:com:ikea:homesmart:iotc:zigbee': Raised when a device have a different, and other things regarding the
+        def update_n_display(*args, **kwargs):
+            self.update()
+            return prometheus_display_metric(*args, **kwargs)
 
-    if x['type'] not in [
-        'deviceRemoved',
-        'deviceStateChanged',
-        'deviceAdded',
-        'deviceConfigurationChanged'
-    ]:
-        return
+        return self.metric_export.time()(
+            update_n_display
+        )
 
-    if x['type'] == 'deviceAdded':
+    def update(self):
         try:
-            dm = dict_to_device_metric(x['data'])
-        except ValueError as e:
-            logging.exception('Error while loading a device metric from a dict', exc_info=e)
-            return
-        dev_id = dm.dev.id
-        devices[dev_id] = dm
-        devices_counter.inc()
-        return
+            devs = self.hub.get_all_devices()
+        except requests.exceptions.HTTPError:
+            raise Exception("The Authentication Token is no longer valid")
+        except requests.exceptions.ConnectTimeout:
+            raise Exception("The Dirigera hub is not reachable")
 
+        new_dev_id = set()
+        old_dev_id = list(self.devices.keys())
+        for dev in devs:
+            new_dev_id.add(dev.id)
+            if self.devices.get(dev.id) is None:
+                self.devices[dev.id] = DeviceMetric(dev, registry=self.registry)
+            else:
+                self.devices[dev.id].update(dev)
 
-    xdata = x['data']
-    if 'id' not in xdata:
-        logging.error('Unexpected miss of the id key in the data part of a received message: %s', message)
-        return
-    target_id = xdata['id']
-
-    if x['type'] == 'deviceRemoved':
-        del devices[target_id]
-        devices_counter.dec()
-        return
-
-    logging.debug("target_id=%r", target_id)
-    logging.debug("devices[target_id] = %s", pprint.pformat(devices.get(target_id)))
-    dev = devices[target_id]
-    try:
-        dev.update_from_dict(xdata)
-    except TypeError as e:
-        logging.exception(e.args, exc_info=e)
-
-# noinspection PyUnusedLocal
-def populate_data_on_error(ws: typing.Any, *args, **kwargs):
-    logging.debug("populate_data_on_error ; Thread ident = %r ; args = %r, kwargs=%r", threading.get_ident(), args, kwargs)
-    general_metrics['ws_failures'].inc()
-
-def populate_data(hub: dirigera.Hub) -> None:
-    try:
-        devs = hub.get_all_devices()
-    except requests.exceptions.HTTPError:
-        raise Exception("The Authentication Token is no longer valid")
-    except requests.exceptions.ConnectTimeout:
-        raise Exception("The Dirigera hub is not reachable")
-
-    logging.error("populate_data ; PID=%r", os.getpid())
-    for dev in devs:
-        devices[dev.id] = DeviceMetric(dev)
-
-    hub.create_event_listener(
-        on_message=populate_data_on_message,
-        on_error=populate_data_on_error,
-    )
+        logging.debug("new_dev_id=%r", new_dev_id)
+        logging.debug("old_dev_id=%r", old_dev_id)
+        for old_id in old_dev_id:
+            if old_id not in new_dev_id:
+                logging.debug("old_id=%s", old_id)
+                self.devices[old_id].unregister()
+                del self.devices[old_id]
 
 def main():
     """Parse CLI arguments and start the server"""
-    logging.error("PID=%r", os.getpid())
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -461,18 +386,15 @@ def main():
     CONFIG['HOSTNAME'] = args.hostname
     CONFIG['TOKEN'] = args.token
 
-    webpath = args.webpath.replace('\\', '/')
-    webpath = '/' + webpath.strip('/')
-
-    hub = get_hub()
     try:
-        hub.get_scenes()
+        test_hub_params()
     except requests.exceptions.HTTPError as e:
         raise Exception("The Authentication Token is not valid") from e
     except requests.exceptions.ConnectTimeout as e:
         raise Exception("The Dirigera hub is not reachable") from e
-    global_watcher = Thread(target=populate_data, name='Dirigera Watcher', args=[hub], daemon=True)
-    global_watcher.start()
+
+    webpath = args.webpath.replace('\\', '/')
+    webpath = '/' + webpath.strip('/')
 
     app = Flask(__name__)
     app.secret_key = secrets.token_hex()
@@ -484,20 +406,12 @@ def main():
                      args.url)
 
     # Add prometheus wsgi middleware to route /metrics requests
-    #multiprocess.MultiProcessCollector(MYREGISTRY)
-    #MYREGISTRY.register(REGISTRY)
-    def metric_factory() -> Callable[[typing.Dict, Callable], typing.List[bytes]]:
-        logging.error("FACTORY")
-        f = make_wsgi_app(REGISTRY)
-        def g(*args, **kwargs):
-            logging.error("PID=%r", os.getpid())
-            return f(*args, **kwargs)
-        return g
+    dev_reg = DeviceRegistry()
     metric_path = '/metrics'
     if webpath != '/':
         metric_path = webpath + metric_path
     app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
-        metric_path: metric_export.time()(metric_factory())
+        metric_path: dev_reg.metric_factory(),
     })
 
     if args.devmode:
