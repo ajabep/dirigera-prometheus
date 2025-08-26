@@ -8,7 +8,7 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
-Flask = "^3.1.1"
+Flask = "^3.1.2"
 dirigera = "^1.2.3"
 prometheus-client = "^0.22.1"
 gunicorn = "^23.0.0"
