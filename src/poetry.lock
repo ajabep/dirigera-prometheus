@@ -168,14 +168,14 @@ files = [
 
 [[package]]
 name = "dirigera"
-version = "1.2.5"
+version = "1.2.6"
 description = "An unofficial Python client for controlling the IKEA Dirigera Smart Home Hub"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "dirigera-1.2.5-py3-none-any.whl", hash = "sha256:164213d26a7b6b03317b28763634c9af16e50a8438fd0b86a41d18703356851f"},
-    {file = "dirigera-1.2.5.tar.gz", hash = "sha256:bd1ac3800e20432e72b25730572cc421fccd9b8034fdc61bb527f1edf4ddefd4"},
+    {file = "dirigera-1.2.6-py3-none-any.whl", hash = "sha256:64354fcfc4e50577475dfc7846f04c635fc8e74cff270f31c8f74065c6291df5"},
+    {file = "dirigera-1.2.6.tar.gz", hash = "sha256:ccebddb8713b6b02a98627c2b58223f448dda92d646d27c3f846daebce4330b6"},
 ]
 
 [package.dependencies]
@@ -601,4 +601,4 @@ watchdog = ["watchdog (>=2.3)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "1b65f21c1c525f2baa317cec37b08619f1ad610fc37873a6f66ca279b173f0e9"
+content-hash = "7cd0089c2e781c714e9d310e28beda62dc52fc0ad71f9cac47fd02334dc79761"
