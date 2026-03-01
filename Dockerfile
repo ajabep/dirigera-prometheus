@@ -6,7 +6,7 @@ WORKDIR /app
 ENV PROMETHEUS_MULTIPROC_DIR=/tmp
 
 RUN apk add --update --no-cache python3~3.12 \
-                            	poetry~1.8 \
+                                poetry~2 \
                                 curl~8 \
  && chown root:root /app \
  && adduser -S -D appuser \
