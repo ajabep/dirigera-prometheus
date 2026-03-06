@@ -227,7 +227,14 @@ class DeviceMetric:
         prefix = ''
         if room is not None:
             prefix = snakecase(room.name) + '_'
-        return prefix + snakecase(self.dev.attributes.custom_name) + '_' + snakecase(self.dev.device_type)
+        suffix = ''
+        if any(
+            model.lower() in self.dev.attributes.model.lower()
+            for model in ['BILRESA']
+        ):
+            # There is a bug in the underlying lib: it returns multiple times the same device with different id but the same name. The only way to differentiate them is the ID. So we add it to the name to avoid conflicts.
+            suffix = '_' + self.dev.id
+        return prefix + snakecase(self.dev.attributes.custom_name) + '_' + snakecase(self.dev.device_type) + suffix
 
     @classmethod
     def to_str(cls, v: typing.Any) -> str:
@@ -243,6 +250,7 @@ class DeviceMetric:
     def autofill(self) -> None:
         parameters = {
             'id': self.dev.id,
+            'relation_id': self.dev.relation_id,
             'type': self.dev.type,
             'device_type': self.dev.device_type,
             'is_reachable': self.dev.is_reachable,
