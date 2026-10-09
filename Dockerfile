@@ -6,7 +6,7 @@ COPY --chown=root:root ./docker/healthcheck.sh /
 WORKDIR /app
 ENV PROMETHEUS_MULTIPROC_DIR=/tmp
 
-RUN apk add --update --no-cache python3~3.12 \
+RUN apk add --update --no-cache python3~3.14 \
                                 poetry~2 \
                                 curl~8 \
  && chown root:root /app \
