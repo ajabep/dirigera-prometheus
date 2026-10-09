@@ -228,12 +228,6 @@ class DeviceMetric:
         if room is not None:
             prefix = snakecase(room.name) + '_'
         suffix = ''
-        if any(
-            model.lower() in self.dev.attributes.model.lower()
-            for model in ['BILRESA']
-        ):
-            # There is a bug in the underlying lib: it returns multiple times the same device with different id but the same name. The only way to differentiate them is the ID. So we add it to the name to avoid conflicts.
-            suffix = '_' + self.dev.id
         return prefix + snakecase(self.dev.attributes.custom_name) + '_' + snakecase(self.dev.device_type) + suffix
 
     @classmethod
@@ -305,6 +299,61 @@ class DeviceMetric:
         self.dev = dev
         self.autofill()
 
+class UnMergeableError(Exception):
+    pass
+
+def merge_parts(parts: list):
+    parts.sort(key=lambda x: int(x.id.split('_', 2)[1])) # If it fails, same strategy as previously, it crashes
+    classes = set([
+        p.__class__
+        for p in parts
+    ])
+    if len(classes) != 1:
+        raise UnMergeableError("Not the same class!")
+
+    if len(set([
+            p.type
+            for p in parts
+        ])) != 1:
+        raise UnMergeableError("Not the same types!")
+
+    if len(set([
+            p.device_type
+            for p in parts
+        ])) != 1:
+        raise UnMergeableError("Not the same device types!")
+
+    def toArgsName(name: str) -> str:
+        parts = name.split('_')
+        return parts[0] + ''.join(word.capitalize() for word in parts[1:])
+
+    new_kw = {}
+    for part in parts:
+        def mergeObj(data, parentData):
+            for k, v in data.items():
+                newK = toArgsName(k)
+                if v is None:
+                    continue
+                elif v == '':
+                    continue
+                elif isinstance(v, dict):
+                    if parentData.get(newK) is None:
+                        parentData[newK] = {}
+                    mergeObj(v, parentData[newK])
+                    continue
+                elif isinstance(v, list):
+                    if parentData.get(newK) is None:
+                        parentData[newK] = []
+                    for i in v:
+                        if i not in parentData[newK]:
+                            parentData[newK].append(i)
+                elif newK not in parentData:
+                    parentData[newK] = v
+        mergeObj(part.dict(), new_kw)
+
+    new_kw['id'] = parts[0].relation_id
+    return classes.pop()(**new_kw)
+
 class DeviceRegistry:
     devices : dict[str, DeviceMetric] = {}
     def __init__(self):
@@ -337,14 +386,40 @@ class DeviceRegistry:
         except requests.exceptions.ConnectTimeout as exc:
             raise Exception("The Dirigera hub is not reachable") from exc
 
+        # Let's fill all the devices as previously, but, by putting aside the multi-part components (i.e. mainly Matter devices) together.
+        multi_part_devices = {} # dict[str, list[device]]
         new_dev_id = set()
         old_dev_id = list(self.devices.keys())
         for dev in devs:
+            if dev.relation_id is not None:
+                if multi_part_devices.get(dev.relation_id) is None:
+                    multi_part_devices[dev.relation_id] = []
+                multi_part_devices[dev.relation_id].append(dev)
+                continue
+
             new_dev_id.add(dev.id)
             if self.devices.get(dev.id) is None:
                 self.devices[dev.id] = DeviceMetric(dev, registry=self.registry)
             else:
                 self.devices[dev.id].update(dev)
+
+        for multi_part_id, parts in multi_part_devices.items():
+            devices = []
+            try:
+                merged = merge_parts(parts)
+            except UnMergeableError:
+                # Just in case of, we keep all the parts splitted.
+                devices = parts
+            else:
+                devices.append(merged)
+
+            for dev in devices:
+                devid = multi_part_id if len(devices) else dev.id
+                new_dev_id.add(devid)
+                if self.devices.get(devid) is None:
+                    self.devices[devid] = DeviceMetric(dev, registry=self.registry)
+                else:
+                    self.devices[devid].update(dev)
 
         logging.debug("new_dev_id=%r", new_dev_id)
         logging.debug("old_dev_id=%r", old_dev_id)
