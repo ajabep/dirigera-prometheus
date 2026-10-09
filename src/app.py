@@ -304,52 +304,52 @@ class UnMergeableError(Exception):
 
 def merge_parts(parts: list):
     parts.sort(key=lambda x: int(x.id.split('_', 2)[1])) # If it fails, same strategy as previously, it crashes
-    classes = set([
+    classes = {
         p.__class__
         for p in parts
-    ])
+    }
     if len(classes) != 1:
         raise UnMergeableError("Not the same class!")
 
-    if len(set([
+    if len({
             p.type
             for p in parts
-        ])) != 1:
+        }) != 1:
         raise UnMergeableError("Not the same types!")
 
-    if len(set([
+    if len({
             p.device_type
             for p in parts
-        ])) != 1:
+        }) != 1:
         raise UnMergeableError("Not the same device types!")
 
-    def toArgsName(name: str) -> str:
+    def to_args_name(name: str) -> str:
         parts = name.split('_')
         return parts[0] + ''.join(word.capitalize() for word in parts[1:])
 
     new_kw = {}
     for part in parts:
-        def mergeObj(data, parentData):
+        def merge_obj(data, parent_data):
             for k, v in data.items():
-                newK = toArgsName(k)
+                new_k = to_args_name(k)
                 if v is None:
                     continue
-                elif v == '':
+                if v == '':
                     continue
-                elif isinstance(v, dict):
-                    if parentData.get(newK) is None:
-                        parentData[newK] = {}
-                    mergeObj(v, parentData[newK])
+                if isinstance(v, dict):
+                    if parent_data.get(new_k) is None:
+                        parent_data[new_k] = {}
+                    merge_obj(v, parent_data[new_k])
                     continue
                 elif isinstance(v, list):
-                    if parentData.get(newK) is None:
-                        parentData[newK] = []
+                    if parent_data.get(new_k) is None:
+                        parent_data[new_k] = []
                     for i in v:
-                        if i not in parentData[newK]:
-                            parentData[newK].append(i)
-                elif newK not in parentData:
-                    parentData[newK] = v
-        mergeObj(part.dict(), new_kw)
+                        if i not in parent_data[new_k]:
+                            parent_data[new_k].append(i)
+                elif new_k not in parent_data:
+                    parent_data[new_k] = v
+        merge_obj(part.dict(), new_kw)
 
     new_kw['id'] = parts[0].relation_id
     return classes.pop()(**new_kw)
@@ -390,6 +390,13 @@ class DeviceRegistry:
         multi_part_devices = {} # dict[str, list[device]]
         new_dev_id = set()
         old_dev_id = list(self.devices.keys())
+        def defineDevice(devid, dev):            
+            new_dev_id.add(devid)
+            if self.devices.get(devid) is None:
+                self.devices[devid] = DeviceMetric(dev, registry=self.registry)
+            else:
+                self.devices[devid].update(dev)
+
         for dev in devs:
             if dev.relation_id is not None:
                 if multi_part_devices.get(dev.relation_id) is None:
@@ -397,11 +404,7 @@ class DeviceRegistry:
                 multi_part_devices[dev.relation_id].append(dev)
                 continue
 
-            new_dev_id.add(dev.id)
-            if self.devices.get(dev.id) is None:
-                self.devices[dev.id] = DeviceMetric(dev, registry=self.registry)
-            else:
-                self.devices[dev.id].update(dev)
+            defineDevice(dev.id, dev)
 
         for multi_part_id, parts in multi_part_devices.items():
             devices = []
@@ -414,12 +417,8 @@ class DeviceRegistry:
                 devices.append(merged)
 
             for dev in devices:
-                devid = multi_part_id if len(devices) else dev.id
-                new_dev_id.add(devid)
-                if self.devices.get(devid) is None:
-                    self.devices[devid] = DeviceMetric(dev, registry=self.registry)
-                else:
-                    self.devices[devid].update(dev)
+                devid = multi_part_id if len(devices) == 1 else dev.id
+                defineDevice(devid, dev)
 
         logging.debug("new_dev_id=%r", new_dev_id)
         logging.debug("old_dev_id=%r", old_dev_id)
