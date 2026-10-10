@@ -302,9 +302,13 @@ class DeviceMetric:
 class UnMergeableError(Exception):
     pass
 
+def snake_to_camel_case(name: str) -> str:
+    parts = name.split('_')
+    return parts[0] + ''.join(word.capitalize() for word in parts[1:])
+
 def merge_obj(data, parent_data):
     for k, v in data.items():
-        new_k = to_args_name(k)
+        new_k = snake_to_camel_case(k)
         if v is None:
             continue
         if v == '':
@@ -342,10 +346,6 @@ def merge_parts(parts: list):
             for p in parts
         }) != 1:
         raise UnMergeableError("Not the same device types!")
-
-    def to_args_name(name: str) -> str:
-        parts = name.split('_')
-        return parts[0] + ''.join(word.capitalize() for word in parts[1:])
 
     new_kw = {}
     for part in parts:
