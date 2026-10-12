@@ -26,7 +26,7 @@ But, unfortunately, I faced a lack of time. So, I just adapted a bit the code to
 
 ### Not everything is implemented
 
-Due to the dirigera Python dependency, not everything is implemented. I hope to be able to fix that later, but, it's 
+Due to the dirigera Python dependency, not everything is implemented. I hope to be able to fix that later, but, it's
 not really my current priority.
 
 ### Only tested with my setup
@@ -37,7 +37,7 @@ Please, if you find a bug, report it! Thus, everyone may be able to have a fix..
 
 ### Metrics are not really OpenTelemetry compliant
 
-Yes. I know, I do not use here the label and all of these things. I know. Once again, it's "good enough" for me, and 
+Yes. I know, I do not use here the label and all of these things. I know. Once again, it's "good enough" for me, and
 I miss time.
 
 ## How to build?
@@ -86,4 +86,4 @@ Or check the "Known Issues" section of this file.
 
 ## License
 
-*dirigera-prometheus-gateway* is released under the Unlicensed license. See the [./LICENSE](LICENSE) file.
+*dirigera-prometheus* is released under the Unlicensed license. See the [./LICENSE](LICENSE) file.

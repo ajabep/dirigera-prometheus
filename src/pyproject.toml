@@ -1,17 +1,51 @@
-[tool.poetry]
-name = "dirigera-prometheus-gateway"
+[project]
+name = "dirigera-prometheus"
 version = "0.1.0"
 description = "A Dirigera Gateway to expose metrics to Prometheus"
-authors = ["Ajabep <ajabep@tutanota.com>"]
-readme = "README.md"
-package-mode = false
+readme = "../README.md"
+requires-python = ">=3.11"
+license="Unlicense"
+license-files=["LICENSE.txt"]
+authors = [
+	{ name= "Ajabep", email= "ajabep@users.noreply.github.com" }
+]
+keywords = ["dirigera", "ikea", "iot", "zigbee", "matter", "prometheus", "monitoring", "telemetry", "observability"]
+classifiers = [
+	"Development Status :: 5 - Production/Stable",
+	"Environment :: No Input/Output (Daemon)",
+	"Environment :: Web Environment",
+	"Framework :: Flask",
+	"Framework :: OpenTelemetry",
+	"Intended Audience :: Information Technology",
+	"Natural Language :: English",
+	"Operating System :: OS Independent",
+	"Programming Language :: Python",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3 :: Only",
+	"Topic :: Home Automation",
+	"Topic :: System :: Systems Administration"
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-Flask = "^3.1.3"
-dirigera = "^1.2.7"
-prometheus-client = "^0.25.0"
-gunicorn = ">=25.3,<27.0"
+
+dependencies=[
+	"Flask~=3.1.3",
+	"dirigera~=1.4.0",
+	"prometheus-client~=0.26.0",
+	"gunicorn~=26.2.0",
+]
+
+[project.scripts]
+main = "app:main"
+
+[project.urls]
+Repository = "https://github.com/ajabep/dirigera-prometheus.git"
+GitHub = "https://github.com/ajabep/dirigera-prometheus"
+issues = "https://github.com/ajabep/dirigera-prometheus/issues"
+security = "https://github.com/ajabep/dirigera-prometheus/blob/main/SECURITY.md"
+funding = "https://github.com/sponsors/ajabep"
+
+[tool.poetry]
+package-mode = false
 
 [tool.pylint.main]
 disable = ["line-too-long", "missing-function-docstring", "missing-class-docstring", "missing-module-docstring", "broad-exception-raised"]
